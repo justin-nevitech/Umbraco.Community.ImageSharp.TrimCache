@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(dotnet pack:*)",
+      "Bash(dotnet restore:*)",
+      "Bash(dotnet list:*)",
+      "Bash(dotnet msbuild:*)",
+      "Bash(dotnet --info)",
+      "Bash(dotnet --list-sdks)",
+      "Bash(dotnet --list-runtimes)",
+      "Bash(curl -s https://api.nuget.org/v3-flatcontainer/*)",
+      "Bash(curl -s https://marketplace.umbraco.com/umbraco-marketplace-schema.json)",
+      "Bash(find /c/Users/JustinNeville/.nuget/packages/**)",
+      "Read(//c/Users/JustinNeville/.nuget/packages/**)",
+      "WebFetch(domain:api.nuget.org)",
+      "WebFetch(domain:marketplace.umbraco.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebSearch"
+    ]
+  }
+}

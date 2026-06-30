@@ -1,0 +1,16 @@
+{
+  "$schema": "https://marketplace.umbraco.com/umbraco-marketplace-schema.json",
+  "AuthorDetails": {
+    "Name": "Justin Neville",
+    "ImageUrl": "https://github.com/justin-nevitech.png",
+    "Url": "https://www.nevitech.co.uk"
+  },
+  "Category": "Developer Tools",
+  "Description": "Scheduled, age-based trimming of the ImageSharp.Web image cache for Umbraco. Supports both the Azure Blob cache and the local physical cache, keeping the cache from growing unbounded (for example exceeding Umbraco Cloud media-storage limits). Old variants are removed in the background and regenerated on the next request. Supports Umbraco 13, 17 and 18.",
+  "LicenseTypes": [ "Free" ],
+  "IssueTrackerUrl": "https://github.com/justin-nevitech/Umbraco.Community.ImageSharp.TrimCache/issues",
+  "DocumentationUrl": "https://github.com/justin-nevitech/Umbraco.Community.ImageSharp.TrimCache",
+  "PackageType": "Package",
+  "Tags": [ "imagesharp", "image-cache", "media-cache", "media-storage", "azure-blob", "cache-cleanup", "umbraco-cloud", "performance" ],
+  "Title": "Umbraco.Community.ImageSharp.TrimCache"
+}

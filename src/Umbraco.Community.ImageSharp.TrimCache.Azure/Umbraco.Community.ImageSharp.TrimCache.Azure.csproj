@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Don't warn on members without XML doc comments (CS1591). -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <RootNamespace>Umbraco.Community.ImageSharp.TrimCache.Azure</RootNamespace>
+    <AssemblyName>Umbraco.Community.ImageSharp.TrimCache.Azure</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Storage.Blobs" Version="[12.22.2,13.0.0)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Umbraco.Community.ImageSharp.TrimCache.Core\Umbraco.Community.ImageSharp.TrimCache.Core.csproj" />
+  </ItemGroup>
+
+</Project>

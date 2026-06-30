@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Supported Umbraco majors and runtimes (June 2026):
+      Umbraco 13 (LTS) -> .NET 8  (net8.0)
+      Umbraco 17 (LTS) -> .NET 10 (net10.0)  (default for net10.0)
+      Umbraco 18 (STS) -> .NET 10 (net10.0)
+
+    17 and 18 share .NET 10, so the Umbraco major is chosen by the UmbracoMajor
+    build property, not by TargetFramework alone:
+      dotnet build -f net8.0  -p:UmbracoMajor=13
+      dotnet build -f net10.0 -p:UmbracoMajor=17   (default for net10.0)
+      dotnet build -f net10.0 -p:UmbracoMajor=18
+
+    The net10.0 build compiles against the lowest Umbraco 17 API and allows a
+    range up to (but excluding) 19, so a SINGLE net10.0 assembly supports both
+    Umbraco 17 and 18 (the package only uses stable, shared CMS APIs). Use
+    -p:UmbracoMajor=18 to compile/verify strictly against 18.
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Umbraco.Community.ImageSharp.TrimCache.Web</RootNamespace>
+    <AssemblyName>Umbraco.Community.ImageSharp.TrimCache.Web</AssemblyName>
+    <UmbracoMajor Condition="'$(UmbracoMajor)' == '' and '$(TargetFramework)' == 'net8.0'">13</UmbracoMajor>
+    <UmbracoMajor Condition="'$(UmbracoMajor)' == '' and '$(TargetFramework)' == 'net10.0'">17</UmbracoMajor>
+
+    <UmbracoCmsVersion Condition="'$(UmbracoMajor)' == '13'">[13.0.0,14.0.0)</UmbracoCmsVersion>
+    <UmbracoCmsVersion Condition="'$(UmbracoMajor)' == '17'">[17.0.0,19.0.0)</UmbracoCmsVersion>
+    <UmbracoCmsVersion Condition="'$(UmbracoMajor)' == '18'">[18.0.0,19.0.0)</UmbracoCmsVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Umbraco.Cms.Web.Common" Version="$(UmbracoCmsVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Umbraco.Community.ImageSharp.TrimCache.Core\Umbraco.Community.ImageSharp.TrimCache.Core.csproj" />
+    <ProjectReference Include="..\Umbraco.Community.ImageSharp.TrimCache.Azure\Umbraco.Community.ImageSharp.TrimCache.Azure.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,89 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Main NuGet package: Umbraco.Community.ImageSharp.TrimCache.
+    This is the single package consumers install. It bundles the Core, Azure and
+    Web assemblies into one package (so there is only one thing to install) while
+    flowing the correct Umbraco / Azure NuGet dependencies for the target major.
+
+    Supported Umbraco majors and runtimes (June 2026):
+      Umbraco 13 (LTS) -> .NET 8  (net8.0)
+      Umbraco 17 (LTS) -> .NET 10 (net10.0)  (default for net10.0)
+      Umbraco 18 (STS) -> .NET 10 (net10.0)
+
+    17 and 18 both run on .NET 10, so the Umbraco major is selected with the
+    UmbracoMajor build property, not by TargetFramework alone:
+      dotnet build -f net8.0  -p:UmbracoMajor=13
+      dotnet build -f net10.0 -p:UmbracoMajor=17   (default)
+      dotnet build -f net10.0 -p:UmbracoMajor=18
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Umbraco.Community.ImageSharp.TrimCache</RootNamespace>
+    <AssemblyName>Umbraco.Community.ImageSharp.TrimCache</AssemblyName>
+
+    <UmbracoMajor Condition="'$(UmbracoMajor)' == '' and '$(TargetFramework)' == 'net8.0'">13</UmbracoMajor>
+    <UmbracoMajor Condition="'$(UmbracoMajor)' == '' and '$(TargetFramework)' == 'net10.0'">17</UmbracoMajor>
+
+    <!-- net10.0 range [17,19) means one assembly serves both Umbraco 17 and 18. -->
+    <UmbracoCmsVersion Condition="'$(UmbracoMajor)' == '13'">[13.0.0,14.0.0)</UmbracoCmsVersion>
+    <UmbracoCmsVersion Condition="'$(UmbracoMajor)' == '17'">[17.0.0,19.0.0)</UmbracoCmsVersion>
+    <UmbracoCmsVersion Condition="'$(UmbracoMajor)' == '18'">[18.0.0,19.0.0)</UmbracoCmsVersion>
+
+    <!-- Bundle the referenced project assemblies (Core/Azure/Web) into this package. -->
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
+
+    <!-- NuGet package metadata -->
+    <PackageId>Umbraco.Community.ImageSharp.TrimCache</PackageId>
+    <Product>Umbraco.Community.ImageSharp.TrimCache</Product>
+    <Title>ImageSharp TrimCache for Umbraco</Title>
+    <Description>Scheduled, age-based trimming of the ImageSharp.Web image cache for Umbraco. Supports both the Azure Blob cache and the local physical cache, and keeps the cache from growing unbounded (e.g. exceeding Umbraco Cloud media-storage limits) by removing old variants in the background. Deleted variants are regenerated on the next request. Supports Umbraco 13, 17 and 18.</Description>
+    <Authors>Justin Neville</Authors>
+    <Company>Nevitech IT Solutions Ltd</Company>
+    <Copyright>$([System.DateTime]::UtcNow.ToString(`yyyy`)) © Justin Neville</Copyright>
+    <PackageTags>umbraco;umbraco-marketplace;imagesharp;image-cache;media-cache;media-storage;azure-blob;cache-cleanup;umbraco-cloud</PackageTags>
+    <PackageProjectUrl>https://github.com/justin-nevitech/Umbraco.Community.ImageSharp.TrimCache</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/justin-nevitech/Umbraco.Community.ImageSharp.TrimCache</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README_nuget.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <!-- Set the package icon only when docs/icon.png exists, so the build/pack
+         doesn't fail before the icon is added. Drop docs/icon.png in to enable it. -->
+    <PackageIcon Condition="Exists('..\..\docs\icon.png')">icon.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\docs\README_nuget.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\docs\icon.png" Condition="Exists('..\..\docs\icon.png')" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <!--
+    The bundled assemblies are referenced with PrivateAssets="all" so they are NOT
+    emitted as (non-existent) package dependencies. Instead, the real third-party
+    dependencies they need are declared directly below, so they flow to consumers.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Umbraco.Community.ImageSharp.TrimCache.Core\Umbraco.Community.ImageSharp.TrimCache.Core.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\Umbraco.Community.ImageSharp.TrimCache.Azure\Umbraco.Community.ImageSharp.TrimCache.Azure.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\Umbraco.Community.ImageSharp.TrimCache.Web\Umbraco.Community.ImageSharp.TrimCache.Web.csproj" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Dependencies the bundled assemblies need, surfaced as real package dependencies. -->
+  <ItemGroup>
+    <PackageReference Include="Azure.Storage.Blobs" Version="[12.22.2,13.0.0)" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Umbraco.Cms.Web.Common" Version="$(UmbracoCmsVersion)" />
+  </ItemGroup>
+
+  <!-- Add the project-reference assemblies to the package's lib/<tfm> folder. -->
+  <Target Name="CopyProjectReferencesToPackage" DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths->WithMetadataValue('ReferenceSourceTarget', 'ProjectReference')->WithMetadataValue('Extension', '.dll'))" />
+    </ItemGroup>
+  </Target>
+
+</Project>

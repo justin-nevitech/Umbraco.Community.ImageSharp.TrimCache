@@ -16,8 +16,8 @@ public static class ScheduleResolver
     /// </summary>
     public static TimeSpan ResolveInterval(int intervalMinutes)
     {
-        var minutes = Math.Max(1, intervalMinutes);
-        return TimeSpan.FromMinutes(minutes);
+        var interval = TimeSpan.FromMinutes(intervalMinutes);
+        return interval < MinimumInterval ? MinimumInterval : interval;
     }
 
     /// <summary>Resolves the startup delay from a configured minutes value, clamped to >= 0.</summary>

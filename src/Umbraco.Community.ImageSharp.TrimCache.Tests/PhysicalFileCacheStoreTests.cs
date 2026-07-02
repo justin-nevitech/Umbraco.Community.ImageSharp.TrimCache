@@ -34,9 +34,10 @@ public sealed class PhysicalFileCacheStoreTests : IDisposable
     [Fact]
     public async Task Lists_image_files_but_not_meta_files()
     {
-        WriteFile("aaa");
+        // ImageSharp names the pair "<base>.<imageext>" + "<base>.meta".
+        WriteFile("aaa.webp");
         WriteFile("aaa.meta");
-        WriteFile("bbb");
+        WriteFile("bbb.png");
         WriteFile("bbb.meta");
 
         var store = new PhysicalFileCacheStore(_dir);
@@ -48,8 +49,8 @@ public sealed class PhysicalFileCacheStoreTests : IDisposable
         }
 
         Assert.Equal(2, names.Count);
-        Assert.Contains("aaa", names);
-        Assert.Contains("bbb", names);
+        Assert.Contains("aaa.webp", names);
+        Assert.Contains("bbb.png", names);
         Assert.DoesNotContain("aaa.meta", names);
         Assert.DoesNotContain("bbb.meta", names);
     }
@@ -57,7 +58,7 @@ public sealed class PhysicalFileCacheStoreTests : IDisposable
     [Fact]
     public async Task Delete_removes_both_the_image_and_its_meta_pair()
     {
-        var image = WriteFile("ccc");
+        var image = WriteFile("ccc.webp");
         var meta = WriteFile("ccc.meta");
 
         var store = new PhysicalFileCacheStore(_dir);
@@ -71,7 +72,7 @@ public sealed class PhysicalFileCacheStoreTests : IDisposable
     [Fact]
     public async Task Delete_of_image_without_meta_still_succeeds()
     {
-        var image = WriteFile("ddd");
+        var image = WriteFile("ddd.webp");
 
         var store = new PhysicalFileCacheStore(_dir);
         var deleted = await store.DeleteAsync(image);
@@ -125,12 +126,136 @@ public sealed class PhysicalFileCacheStoreTests : IDisposable
     public async Task Full_trim_against_local_store_deletes_old_and_keeps_new()
     {
         // Old file: backdate its last-write time well past the cutoff.
-        var oldPath = WriteFile("old");
+        var oldPath = WriteFile("old.webp");
         File.SetLastWriteTimeUtc(oldPath, DateTime.UtcNow.AddDays(-60));
-        WriteFile("old.meta");
+        var oldMeta = WriteFile("old.meta");
 
         // New file: leave at "now".
-        var newPath = WriteFile("new");
+        var newPath = WriteFile("new.webp");
+
+        var store = new PhysicalFileCacheStore(_dir);
+        var trimmer = new CacheTrimmer(store);
+
+        var result = await trimmer.TrimAsync(new TrimSettings
+        {
+            MaxAge = TimeSpan.FromDays(30),
+            SafetyWindow = TimeSpan.FromMinutes(5),
+        });
+
+        // One variant deleted (its .meta is removed with the image, not counted separately).
+        Assert.Equal(1, result.Deleted);
+        Assert.False(File.Exists(oldPath));
+        Assert.False(File.Exists(oldMeta));
+        Assert.True(File.Exists(newPath));
+    }
+
+    [Fact]
+    public async Task Enumerates_files_in_nested_subdirectories()
+    {
+        // The ImageSharp physical cache nests variants in hashed subfolders.
+        WriteFile("a/b/c/nested.webp");
+        WriteFile("a/b/c/nested.meta");
+        WriteFile("top.webp");
+
+        var store = new PhysicalFileCacheStore(_dir);
+
+        var names = new List<string>();
+        await foreach (var entry in store.ListAsync())
+        {
+            names.Add(Path.GetFileName(entry.Name));
+        }
+
+        Assert.Equal(2, names.Count);
+        Assert.Contains("nested.webp", names);
+        Assert.Contains("top.webp", names);
+        Assert.DoesNotContain("nested.meta", names);
+    }
+
+    [Fact]
+    public async Task Meta_is_hidden_only_by_its_own_base_image()
+    {
+        // Two variants in the same folder. Each .meta must be hidden by ITS image only
+        // (the sibling check is base-specific, not "any image in the folder").
+        WriteFile("x.webp");
+        WriteFile("x.meta");
+        WriteFile("y.png");
+        WriteFile("y.meta");
+
+        var store = new PhysicalFileCacheStore(_dir);
+
+        var names = new List<string>();
+        await foreach (var entry in store.ListAsync())
+        {
+            names.Add(Path.GetFileName(entry.Name));
+        }
+
+        Assert.Equal(2, names.Count);
+        Assert.Contains("x.webp", names);
+        Assert.Contains("y.png", names);
+        Assert.DoesNotContain("x.meta", names);
+        Assert.DoesNotContain("y.meta", names);
+    }
+
+    [Fact]
+    public async Task Delete_removes_only_its_own_paired_meta_not_a_siblings()
+    {
+        var x = WriteFile("x.webp");
+        var xMeta = WriteFile("x.meta");
+        WriteFile("y.webp");
+        var yMeta = WriteFile("y.meta");
+
+        var store = new PhysicalFileCacheStore(_dir);
+        await store.DeleteAsync(x);
+
+        Assert.False(File.Exists(x));
+        Assert.False(File.Exists(xMeta));
+        Assert.True(File.Exists(yMeta)); // the other variant's meta is untouched
+    }
+
+    [Fact]
+    public async Task Delete_removes_orphaned_meta_even_when_image_already_gone()
+    {
+        // Image absent, only the .meta remains: delete reports false (no image) but
+        // still cleans up the orphaned .meta so it cannot linger forever.
+        var imagePath = Path.Combine(_dir, "lonely.webp");
+        var metaPath = WriteFile("lonely.meta");
+
+        var store = new PhysicalFileCacheStore(_dir);
+        var deleted = await store.DeleteAsync(imagePath);
+
+        Assert.False(deleted);
+        Assert.False(File.Exists(metaPath));
+    }
+
+    [Fact]
+    public async Task Orphaned_meta_without_an_image_is_listed_so_it_can_be_trimmed()
+    {
+        // A .meta whose image is gone would otherwise never be enumerated and would
+        // accumulate forever. It must be surfaced as an entry in its own right.
+        WriteFile("orphan.meta");
+
+        // A normal pair must still hide its .meta.
+        WriteFile("paired.webp");
+        WriteFile("paired.meta");
+
+        var store = new PhysicalFileCacheStore(_dir);
+
+        var names = new List<string>();
+        await foreach (var entry in store.ListAsync())
+        {
+            names.Add(Path.GetFileName(entry.Name));
+        }
+
+        Assert.Contains("orphan.meta", names);       // orphan surfaced
+        Assert.Contains("paired.webp", names);       // image surfaced
+        Assert.DoesNotContain("paired.meta", names); // paired meta still hidden
+    }
+
+    [Fact]
+    public async Task Trim_deletes_an_old_orphaned_meta()
+    {
+        var orphan = WriteFile("gone.meta");
+        File.SetLastWriteTimeUtc(orphan, DateTime.UtcNow.AddDays(-60));
 
         var store = new PhysicalFileCacheStore(_dir);
         var trimmer = new CacheTrimmer(store);
@@ -142,46 +267,7 @@ public sealed class PhysicalFileCacheStoreTests : IDisposable
         });
 
         Assert.Equal(1, result.Deleted);
-        Assert.False(File.Exists(oldPath));
-        Assert.False(File.Exists(oldPath + ".meta"));
-        Assert.True(File.Exists(newPath));
-    }
-
-    [Fact]
-    public async Task Enumerates_files_in_nested_subdirectories()
-    {
-        // The ImageSharp physical cache nests variants in hashed subfolders.
-        WriteFile("a/b/c/nested");
-        WriteFile("a/b/c/nested.meta");
-        WriteFile("top");
-
-        var store = new PhysicalFileCacheStore(_dir);
-
-        var names = new List<string>();
-        await foreach (var entry in store.ListAsync())
-        {
-            names.Add(Path.GetFileName(entry.Name));
-        }
-
-        Assert.Equal(2, names.Count);
-        Assert.Contains("nested", names);
-        Assert.Contains("top", names);
-        Assert.DoesNotContain("nested.meta", names);
-    }
-
-    [Fact]
-    public async Task Delete_removes_orphaned_meta_even_when_image_already_gone()
-    {
-        // Image absent, only the .meta remains: delete reports false (no image) but
-        // still cleans up the orphaned .meta so it cannot linger forever.
-        var imagePath = Path.Combine(_dir, "lonely");
-        var metaPath = WriteFile("lonely.meta");
-
-        var store = new PhysicalFileCacheStore(_dir);
-        var deleted = await store.DeleteAsync(imagePath);
-
-        Assert.False(deleted);
-        Assert.False(File.Exists(metaPath));
+        Assert.False(File.Exists(orphan));
     }
 
     [SkippableFact]
@@ -192,7 +278,7 @@ public sealed class PhysicalFileCacheStoreTests : IDisposable
         Skip.IfNot(OperatingSystem.IsWindows(),
             "File locking semantics only apply on Windows.");
 
-        var oldPath = WriteFile("locked");
+        var oldPath = WriteFile("locked.webp");
         File.SetLastWriteTimeUtc(oldPath, DateTime.UtcNow.AddDays(-60));
 
         // Hold an exclusive handle so File.Delete throws IOException.
@@ -256,7 +342,7 @@ public sealed class PhysicalFileCacheStoreTests : IDisposable
     public async Task Trim_prunes_folders_left_empty_by_deletes_and_reports_the_count()
     {
         // A variant nested as ImageSharp would shard it; backdate it so it's trimmed.
-        var oldPath = WriteFile("7/f/2/old");
+        var oldPath = WriteFile("7/f/2/old.webp");
         File.SetLastWriteTimeUtc(oldPath, DateTime.UtcNow.AddDays(-60));
         WriteFile("7/f/2/old.meta");
 
@@ -287,7 +373,7 @@ public sealed class PhysicalFileCacheStoreTests : IDisposable
     [Fact]
     public async Task Meta_files_are_skipped_case_insensitively()
     {
-        WriteFile("img");
+        WriteFile("img.webp");
         WriteFile("img.META");   // upper-case extension must still be treated as meta
 
         var store = new PhysicalFileCacheStore(_dir);
@@ -299,7 +385,7 @@ public sealed class PhysicalFileCacheStoreTests : IDisposable
         }
 
         Assert.Single(names);
-        Assert.Contains("img", names);
+        Assert.Contains("img.webp", names);
         Assert.DoesNotContain("img.META", names);
     }
 

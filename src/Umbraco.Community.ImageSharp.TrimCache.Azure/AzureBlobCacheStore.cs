@@ -49,6 +49,16 @@ public sealed class AzureBlobCacheStore : ICacheStore
         [System.Runtime.CompilerServices.EnumeratorCancellation]
         CancellationToken cancellationToken = default)
     {
+        // If the container doesn't exist yet (e.g. ImageSharp hasn't written its
+        // first cached variant), there's nothing to trim. Short-circuit so we return
+        // an empty listing instead of letting GetBlobsAsync throw a 404 that would be
+        // logged as an error on every run until the container is created.
+        var exists = await _container.ExistsAsync(cancellationToken);
+        if (!exists.Value)
+        {
+            yield break;
+        }
+
         // GetBlobsAsync pages transparently and includes LastModified and
         // ContentLength in the listing, so no per-blob properties call is needed.
         await foreach (BlobItem blob in _container

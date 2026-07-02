@@ -4,14 +4,10 @@ using Microsoft.Extensions.Options;
 using Umbraco.Community.ImageSharp.TrimCache.Azure;
 using Umbraco.Community.ImageSharp.TrimCache.Core;
 using Umbraco.Cms.Core;
-using Umbraco.Cms.Core.Hosting;
+using Umbraco.Cms.Core.Configuration.Models;
 using Umbraco.Cms.Core.Services;
 using Umbraco.Cms.Core.Sync;
 using Umbraco.Cms.Infrastructure.HostedServices;
-
-// IHostingEnvironment exists in both Umbraco.Cms.Core.Hosting and
-// Microsoft.Extensions.Hosting; we need Umbraco's (for MapPathContentRoot).
-using IHostingEnvironment = Umbraco.Cms.Core.Hosting.IHostingEnvironment;
 
 namespace Umbraco.Community.ImageSharp.TrimCache.Web;
 
@@ -35,11 +31,14 @@ public sealed class ImageCacheTrimHostedService : RecurringHostedServiceBase, ID
     private readonly ILogger<CacheTrimmer> _trimmerLogger;
     private readonly ImageCacheTrimOptions _options;
     private readonly IHostApplicationLifetime _appLifetime;
-    private readonly IHostingEnvironment _hostingEnvironment;
+    private readonly IHostEnvironment _hostEnvironment;
+    private readonly ImagingSettings _imagingSettings;
 
     // Re-entrancy gate: 1 permit, so only one run proceeds at a time on this
     // instance. A second tick that arrives mid-run fails the Wait(0) and is skipped.
     private readonly SemaphoreSlim _runGate = new(1, 1);
+
+    private bool _disposed;
 
     public ImageCacheTrimHostedService(
         IRuntimeState runtimeState,
@@ -48,7 +47,8 @@ public sealed class ImageCacheTrimHostedService : RecurringHostedServiceBase, ID
         ILogger<CacheTrimmer> trimmerLogger,
         IOptions<ImageCacheTrimOptions> options,
         IHostApplicationLifetime appLifetime,
-        IHostingEnvironment hostingEnvironment)
+        IHostEnvironment hostEnvironment,
+        IOptions<ImagingSettings> imagingSettings)
         // Schedule is resolved from configuration. RecurringHostedServiceBase
         // captures the period at construction, so changes take effect on the
         // next app restart rather than live.
@@ -60,7 +60,34 @@ public sealed class ImageCacheTrimHostedService : RecurringHostedServiceBase, ID
         _trimmerLogger = trimmerLogger;
         _options = options.Value;
         _appLifetime = appLifetime;
-        _hostingEnvironment = hostingEnvironment;
+        _hostEnvironment = hostEnvironment;
+        _imagingSettings = imagingSettings.Value;
+
+        // Azure mode with no prefix scans (and trims) the WHOLE container. That's fine
+        // for a dedicated cache container, but dangerous if it also holds media, so
+        // surface it once at startup.
+        if (_options.EffectiveMode == CacheMode.Azure
+            && string.IsNullOrWhiteSpace(_options.Prefix))
+        {
+            _logger.LogWarning(
+                "ImageCacheTrim: Azure mode is configured with no Prefix, so the ENTIRE " +
+                "container '{Container}' will be scanned and trimmed by age. Ensure it " +
+                "holds only the ImageSharp cache — never source media — or set a Prefix " +
+                "(e.g. 'cache/') to scope the scan.",
+                _options.ContainerName);
+        }
+        // Local mode with an explicit CacheFolderPath override: record which custom
+        // folder will be trimmed, so a mis-pointed path is visible. The default (empty)
+        // follows Umbraco's own ImageSharp cache folder and needs no note.
+        else if (_options.EffectiveMode == CacheMode.Local
+            && !string.IsNullOrWhiteSpace(_options.CacheFolderPath))
+        {
+            _logger.LogInformation(
+                "ImageCacheTrim: local mode will trim the configured cache folder '{Path}'. " +
+                "Files in that folder older than the max age will be deleted — ensure it is " +
+                "the ImageSharp cache folder, not source media.",
+                ResolveLocalCacheFolder());
+        }
     }
 
     public override async Task PerformExecuteAsync(object? state)
@@ -127,7 +154,7 @@ public sealed class ImageCacheTrimHostedService : RecurringHostedServiceBase, ID
             // Pass the application's stopping token so an in-flight run cancels
             // promptly when Umbraco shuts down.
             await trimmer.TrimAsync(
-                new TrimSettings { MaxAge = TimeSpan.FromDays(_options.MaxAgeDays) },
+                new TrimSettings { MaxAge = _options.ResolveMaxAge() },
                 _appLifetime.ApplicationStopping);
         }
         catch (OperationCanceledException)
@@ -158,23 +185,40 @@ public sealed class ImageCacheTrimHostedService : RecurringHostedServiceBase, ID
             });
         }
 
-        // Local physical cache. Resolve the configured path against the content
-        // root if it's relative.
-        var path = _options.CacheFolderPath;
-        if (!Path.IsPathRooted(path))
-        {
-            path = _hostingEnvironment.MapPathContentRoot("~/" + path.TrimStart('~', '/'));
-        }
-
+        // Local physical cache.
+        var path = ResolveLocalCacheFolder();
         _logger.LogDebug("ImageCacheTrim: using local physical cache store at {Path}.", path);
         return new PhysicalFileCacheStore(path);
     }
 
-    // The base RecurringHostedServiceBase.Dispose() is non-virtual, so this hides
-    // it (new); we re-implement IDisposable on this class and chain to the base so
-    // both the base timer and our re-entrancy gate are disposed.
+    // Resolves the local cache folder: the configured path, otherwise Umbraco's own
+    // ImageSharp cache folder so we trim exactly what it writes — mapped against the
+    // content root when relative.
+    private string ResolveLocalCacheFolder()
+    {
+        var path = _options.ResolveCacheFolderPath(_imagingSettings.Cache.CacheFolder);
+        if (!Path.IsPathRooted(path))
+        {
+            path = Path.Combine(_hostEnvironment.ContentRootPath, path.TrimStart('~', '/', '\\'));
+        }
+
+        return path;
+    }
+
+    // The base RecurringHostedServiceBase.Dispose() is non-virtual, so this hides it
+    // (new) and re-declares IDisposable, so disposal via the IDisposable interface
+    // (how the host disposes hosted services) runs this and chains to the base —
+    // disposing both the base timer and our re-entrancy gate. Disposal happens only
+    // after the host has stopped the service, so the gate is never disposed out from
+    // under an in-flight run. Guarded so a double-dispose is a no-op.
     public new void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         _runGate.Dispose();
         base.Dispose();
     }

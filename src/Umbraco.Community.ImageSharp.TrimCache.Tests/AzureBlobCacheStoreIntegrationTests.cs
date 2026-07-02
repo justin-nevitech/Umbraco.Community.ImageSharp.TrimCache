@@ -15,13 +15,12 @@ namespace Umbraco.Community.ImageSharp.TrimCache.Tests;
 /// suite stays green on machines without Azurite running.
 ///
 /// To run locally:
-///   1. Start Azurite:  docker run -p 10000:10000 mcr.microsoft.com/azure-storage/azurite
+///   1. Start Azurite:  docker run -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
 ///      (or `azurite-blob` via the npm tool / VS Code extension)
 ///   2. Set env var AZURITE_CONNECTION to the well-known dev connection string:
 ///      "UseDevelopmentStorage=true"
 ///
-/// In CI, a Testcontainers-based fixture can start Azurite per run and inject the
-/// connection string — see the README for the optional Testcontainers setup.
+/// See docs/LOCAL-TESTING.md for the full manual + code-level testing guide.
 /// </summary>
 public sealed class AzureBlobCacheStoreIntegrationTests
 {

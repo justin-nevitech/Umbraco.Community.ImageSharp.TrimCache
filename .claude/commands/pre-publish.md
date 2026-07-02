@@ -11,7 +11,7 @@ dotnet build src/Umbraco.Community.ImageSharp.TrimCache.slnx -c Release
 
 ## 2. Run Tests
 ```
-dotnet test tests/Umbraco.Community.ImageSharp.TrimCache.Tests/Umbraco.Community.ImageSharp.TrimCache.Tests.csproj -c Release
+dotnet test src/Umbraco.Community.ImageSharp.TrimCache.Tests/Umbraco.Community.ImageSharp.TrimCache.Tests.csproj -c Release
 ```
 - All tests must pass (Azurite integration tests are SkippableFacts and will skip
   unless `AZURITE_CONNECTION` is set — that's expected).

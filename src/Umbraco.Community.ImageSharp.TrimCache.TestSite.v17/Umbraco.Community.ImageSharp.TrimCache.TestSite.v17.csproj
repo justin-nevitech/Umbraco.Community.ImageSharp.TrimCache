@@ -16,6 +16,10 @@
     <PackageReference Include="Microsoft.ICU.ICU4C.Runtime" Version="72.1.0.3" />
     <PackageReference Include="Umbraco.Cms.DevelopmentMode.Backoffice" Version="17.5.0" />
     <PackageReference Include="uSync" Version="17.3.5" />
+    <!-- Local testing only: lets the "Azurite" launch profile route ImageSharp's
+         image cache to Azure blob storage so the package's Azure trim path can be
+         exercised end-to-end. Inert unless that profile's config is present. -->
+    <PackageReference Include="Umbraco.StorageProviders.AzureBlob.ImageSharp" Version="17.0.0" />
     <RuntimeHostConfigurationOption Include="System.Globalization.AppLocalIcu" Value="72.1.0.3" Condition="$(RuntimeIdentifier.StartsWith('linux')) or $(RuntimeIdentifier.StartsWith('win')) or ('$(RuntimeIdentifier)' == '' and !$([MSBuild]::IsOSPlatform('osx')))" />
   </ItemGroup>
 

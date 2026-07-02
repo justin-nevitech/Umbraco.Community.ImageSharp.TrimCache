@@ -18,7 +18,14 @@
       "WebFetch(domain:marketplace.umbraco.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:api.github.com)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(grep -iE \"Umbraco:Storage|Storage:AzureBlob|^Media$|FileSystem\")",
+      "WebFetch(domain:github.com)",
+      "PowerShell($dll = \"$HOME\\\\.nuget\\\\packages\\\\umbraco.storageproviders.azureblob.imagesharp\\\\17.0.0\\\\lib\\\\net10.0\\\\Umbraco.StorageProviders.AzureBlob.ImageSharp.dll\"; $asm = [System.Reflection.Assembly]::LoadFile\\($dll\\); $t = $asm.GetType\\(\"Umbraco.Cms.Core.DependencyInjection.AddAzureBlobImageSharpCacheExtensions\"\\); $t.GetFields\\([System.Reflection.BindingFlags]::Public -bor [System.Reflection.BindingFlags]::Static -bor [System.Reflection.BindingFlags]::NonPublic\\) | ForEach-Object { \"{0} = {1}\" -f $_.Name, $_.GetRawConstantValue\\(\\) })",
+      "Bash(python3 - 'C:\\\\Users\\\\JustinNeville/.nuget/packages/umbraco.storageproviders.azureblob.imagesharp/17.0.0/lib/net10.0/Umbraco.StorageProviders.AzureBlob.ImageSharp.dll')",
+      "PowerShell($dll = \"$HOME\\\\.nuget\\\\packages\\\\umbraco.storageproviders.azureblob.imagesharp\\\\17.0.0\\\\lib\\\\net10.0\\\\Umbraco.StorageProviders.AzureBlob.ImageSharp.dll\"; $bytes = [System.IO.File]::ReadAllBytes\\($dll\\); $u16 = [System.Text.Encoding]::Unicode.GetString\\($bytes\\); [regex]::Matches\\($u16, '/?[A-Za-z][A-Za-z0-9_/.\\\\-]{2,40}'\\) | ForEach-Object { $_.Value } | Where-Object { $_ -match 'cache' } | Sort-Object -Unique)",
+      "Read(//d/My Documents/projects/Open Source/**)",
+      "Bash(rm -rf \"Umbraco.Community.ImageSharp.TrimCache.TestSite.v17\")"
     ]
   }
 }

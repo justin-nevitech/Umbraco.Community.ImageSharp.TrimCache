@@ -35,6 +35,11 @@ public sealed class CacheTrimmer
         var cutoff = now - settings.MaxAge;
         var safetyBoundary = now - settings.SafetyWindow;
 
+        // An entry is eligible when it is older than the age cutoff AND outside the
+        // safety window (which protects variants that may be mid-write).
+        bool IsEligible(CacheEntry entry) =>
+            entry.LastModified < cutoff && entry.LastModified < safetyBoundary;
+
         long examined = 0;
         long deleted = 0;
         long deletedBytes = 0;
@@ -49,14 +54,7 @@ public sealed class CacheTrimmer
 
             examined++;
 
-            // Too new to be eligible by age.
-            if (entry.LastModified >= cutoff)
-            {
-                continue;
-            }
-
-            // Inside the safety window — never touch.
-            if (entry.LastModified >= safetyBoundary)
+            if (!IsEligible(entry))
             {
                 continue;
             }
@@ -86,10 +84,12 @@ public sealed class CacheTrimmer
 
         // After enumeration has fully completed (so we never remove a folder out
         // from under an in-flight directory walk), prune any now-empty folders left
-        // behind by the deletes. Only backends with real nested folders implement
-        // this — the Azure blob store does not, so this step is simply skipped.
+        // behind by the deletes. Skipped entirely when nothing was deleted — there
+        // are no newly-emptied folders to collect, so there's no point walking the
+        // whole tree (and nothing to race with ImageSharp re-creating). Only backends
+        // with real nested folders implement this; the Azure blob store does not.
         var prunedDirectories = 0;
-        if (_store is IPrunableCacheStore prunable)
+        if (deleted > 0 && _store is IPrunableCacheStore prunable)
         {
             prunedDirectories = await prunable.PruneEmptyDirectoriesAsync(cancellationToken);
         }

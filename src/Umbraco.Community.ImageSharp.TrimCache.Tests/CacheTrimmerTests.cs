@@ -265,4 +265,78 @@ public sealed class CacheTrimmerTests
         Assert.Equal(1, result.Failed);
         Assert.Equal(100, result.DeletedBytes);
     }
+
+    [Fact]
+    public async Task Prune_is_invoked_and_its_count_surfaced_when_entries_were_deleted()
+    {
+        var store = new PrunableStore(
+            new[] { EntryAged("old", TimeSpan.FromDays(60)) },
+            pruneReturns: 3);
+        var trimmer = new CacheTrimmer(store, ClockAtNow());
+
+        var result = await trimmer.TrimAsync(Settings());
+
+        Assert.Equal(1, result.Deleted);
+        Assert.Equal(1, store.PruneCallCount);
+        Assert.Equal(3, result.PrunedDirectories);
+    }
+
+    [Fact]
+    public async Task Prune_is_not_invoked_when_nothing_was_deleted()
+    {
+        // Only a fresh entry -> nothing deleted -> no point walking the tree to prune.
+        var store = new PrunableStore(
+            new[] { EntryAged("fresh", TimeSpan.FromDays(1)) },
+            pruneReturns: 5);
+        var trimmer = new CacheTrimmer(store, ClockAtNow());
+
+        var result = await trimmer.TrimAsync(Settings());
+
+        Assert.Equal(0, result.Deleted);
+        Assert.Equal(0, store.PruneCallCount);
+        Assert.Equal(0, result.PrunedDirectories);
+    }
+
+    [Fact]
+    public async Task Non_prunable_store_reports_zero_pruned_directories()
+    {
+        // A store without IPrunableCacheStore (e.g. the Azure blob store) skips pruning.
+        var store = new FakeCacheStore(new[] { EntryAged("old", TimeSpan.FromDays(60)) });
+        var trimmer = new CacheTrimmer(store, ClockAtNow());
+
+        var result = await trimmer.TrimAsync(Settings());
+
+        Assert.Equal(1, result.Deleted);
+        Assert.Equal(0, result.PrunedDirectories);
+    }
+
+    /// <summary>
+    /// A store that also supports directory pruning, so the trimmer's prune step can
+    /// be asserted (was it called, with what result) without touching the filesystem.
+    /// </summary>
+    private sealed class PrunableStore : ICacheStore, IPrunableCacheStore
+    {
+        private readonly FakeCacheStore _inner;
+        private readonly int _pruneReturns;
+
+        public PrunableStore(IEnumerable<CacheEntry> entries, int pruneReturns)
+        {
+            _inner = new FakeCacheStore(entries);
+            _pruneReturns = pruneReturns;
+        }
+
+        public int PruneCallCount { get; private set; }
+
+        public IAsyncEnumerable<CacheEntry> ListAsync(CancellationToken cancellationToken = default)
+            => _inner.ListAsync(cancellationToken);
+
+        public Task<bool> DeleteAsync(string name, CancellationToken cancellationToken = default)
+            => _inner.DeleteAsync(name, cancellationToken);
+
+        public Task<int> PruneEmptyDirectoriesAsync(CancellationToken cancellationToken = default)
+        {
+            PruneCallCount++;
+            return Task.FromResult(_pruneReturns);
+        }
+    }
 }

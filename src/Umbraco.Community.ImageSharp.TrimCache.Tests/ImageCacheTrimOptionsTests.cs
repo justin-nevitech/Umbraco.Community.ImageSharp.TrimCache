@@ -34,7 +34,35 @@ public sealed class ImageCacheTrimOptionsTests
         Assert.Equal(30, options.MaxAgeDays);
         Assert.Equal(1440, options.IntervalMinutes);
         Assert.Equal(5, options.StartupDelayMinutes);
-        Assert.Equal("umbraco/Data/TEMP/MediaCache", options.CacheFolderPath);
+        // Empty by default: the folder is resolved from Umbraco's imaging settings.
+        Assert.Equal(string.Empty, options.CacheFolderPath);
+    }
+
+    [Fact]
+    public void ResolveCacheFolderPath_prefers_an_explicit_setting()
+    {
+        var options = new ImageCacheTrimOptions { CacheFolderPath = "custom/cache" };
+        Assert.Equal("custom/cache", options.ResolveCacheFolderPath("umbraco/imaging/folder"));
+    }
+
+    [Fact]
+    public void ResolveCacheFolderPath_falls_back_to_umbracos_imaging_folder()
+    {
+        // No explicit override -> follow Umbraco's configured ImageSharp cache folder.
+        var options = new ImageCacheTrimOptions();
+        Assert.Equal("umbraco/imaging/folder", options.ResolveCacheFolderPath("umbraco/imaging/folder"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ResolveCacheFolderPath_falls_back_to_the_default_when_nothing_is_set(string? umbracoFolder)
+    {
+        var options = new ImageCacheTrimOptions();
+        Assert.Equal(
+            ImageCacheTrimOptions.DefaultCacheFolderPath,
+            options.ResolveCacheFolderPath(umbracoFolder));
     }
 
     [Fact]
@@ -108,6 +136,49 @@ public sealed class ImageCacheTrimOptionsTests
         var options = WithAzure();
         options.Mode = CacheMode.Azure;
         Assert.True(options.CanRun);
+    }
+
+    [Fact]
+    public void ResolveMaxAge_uses_the_configured_days()
+    {
+        var options = new ImageCacheTrimOptions { MaxAgeDays = 30 };
+        Assert.Equal(TimeSpan.FromDays(30), options.ResolveMaxAge());
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(-99999)]
+    public void ResolveMaxAge_clamps_negative_to_zero(int days)
+    {
+        // A negative age would otherwise move the cutoff into the future and make
+        // every entry eligible — wiping the whole cache.
+        var options = new ImageCacheTrimOptions { MaxAgeDays = days };
+        Assert.Equal(TimeSpan.Zero, options.ResolveMaxAge());
+    }
+
+    [Fact]
+    public void ResolveMaxAge_caps_at_the_ceiling_without_overflowing()
+    {
+        // int.MaxValue days would overflow TimeSpan.FromDays; it must be capped.
+        var options = new ImageCacheTrimOptions { MaxAgeDays = int.MaxValue };
+        Assert.Equal(
+            TimeSpan.FromDays(ImageCacheTrimOptions.MaxAgeDaysCeiling),
+            options.ResolveMaxAge());
+    }
+
+    [Fact]
+    public void ResolveMaxAge_of_zero_days_is_zero()
+    {
+        // 0 is valid (trim everything past the safety window) — not clamped up.
+        Assert.Equal(TimeSpan.Zero, new ImageCacheTrimOptions { MaxAgeDays = 0 }.ResolveMaxAge());
+    }
+
+    [Fact]
+    public void ResolveCacheFolderPath_treats_whitespace_override_as_unset()
+    {
+        // A whitespace-only override must fall through to Umbraco's configured folder.
+        var options = new ImageCacheTrimOptions { CacheFolderPath = "   " };
+        Assert.Equal("umbraco/imaging/folder", options.ResolveCacheFolderPath("umbraco/imaging/folder"));
     }
 
     [Theory]

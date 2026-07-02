@@ -15,6 +15,18 @@ public sealed class PhysicalFileCacheStore : ICacheStore, IPrunableCacheStore
 {
     private const string MetaExtension = ".meta";
 
+    // Recurse the whole tree, but never follow directory junctions / symlinks
+    // (AttributesToSkip = ReparsePoint) so the walk can't escape the cache folder or
+    // loop. AttributesToSkip is set explicitly to ReparsePoint only — the default
+    // also skips Hidden/System, which we want to keep enumerating. IgnoreInaccessible
+    // lets a locked/denied entry be skipped rather than throwing out of the walk.
+    private static readonly EnumerationOptions WalkOptions = new()
+    {
+        RecurseSubdirectories = true,
+        AttributesToSkip = FileAttributes.ReparsePoint,
+        IgnoreInaccessible = true,
+    };
+
     private readonly string _cacheFolder;
 
     public PhysicalFileCacheStore(string cacheFolder)
@@ -36,14 +48,18 @@ public sealed class PhysicalFileCacheStore : ICacheStore, IPrunableCacheStore
             yield break;
         }
 
-        foreach (var path in Directory.EnumerateFiles(
-                     _cacheFolder, "*", SearchOption.AllDirectories))
+        foreach (var path in Directory.EnumerateFiles(_cacheFolder, "*", WalkOptions))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // The .meta files are handled with their image; don't surface them
-            // as entries in their own right.
-            if (path.EndsWith(MetaExtension, StringComparison.OrdinalIgnoreCase))
+            // ImageSharp writes a variant as two files that share a base name but have
+            // different extensions: "<base>.<imageext>" and "<base>.meta". A .meta is
+            // represented by — and deleted with — its image, so skip it while that image
+            // is present. If the image is gone (an orphaned .meta, e.g. a prior run
+            // deleted the image but a transient lock left the .meta behind), surface the
+            // .meta itself so an age-based trim can still reclaim it.
+            if (path.EndsWith(MetaExtension, StringComparison.OrdinalIgnoreCase)
+                && HasSiblingImage(path))
             {
                 continue;
             }
@@ -87,10 +103,12 @@ public sealed class PhysicalFileCacheStore : ICacheStore, IPrunableCacheStore
         // to the trimmer, which tallies it as a failure; the next run retries it.
         var deletedImage = DeleteFile(name, throwOnError: true);
 
-        // The paired .meta is best-effort: once the image is gone the .meta is an
-        // unreachable orphan (it is never listed on its own), so a transient lock
-        // on it must not fail the whole entry or be reported as a failure.
-        DeleteFile(name + MetaExtension, throwOnError: false);
+        // The paired .meta shares the image's base name with a ".meta" extension
+        // (ImageSharp writes "<base>.<ext>" + "<base>.meta"), so swap the extension —
+        // do NOT append ".meta" to the image path. Best-effort: once the image is gone
+        // the .meta is effectively an orphan, so a transient lock on it must not fail
+        // the whole entry or be reported as a failure.
+        DeleteFile(Path.ChangeExtension(name, MetaExtension), throwOnError: false);
 
         return Task.FromResult(deletedImage);
     }
@@ -116,11 +134,39 @@ public sealed class PhysicalFileCacheStore : ICacheStore, IPrunableCacheStore
     {
         var removed = 0;
 
+        // Snapshot the child directories up front (GetDirectories, not the lazy
+        // EnumerateDirectories) so removing a child below doesn't mutate a live
+        // enumerator we're still iterating. Guarded so a directory that vanishes
+        // mid-walk (e.g. a concurrent trim, or ImageSharp churning the tree) leaves
+        // this branch alone instead of throwing out of the whole prune.
+        string[] children;
+        try
+        {
+            children = Directory.GetDirectories(dir);
+        }
+        catch (IOException)
+        {
+            // DirectoryNotFoundException (vanished) is an IOException — nothing to do.
+            return removed;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return removed;
+        }
+
         // Recurse into children first so a parent that is emptied only because its
         // children were pruned is itself removed in the same pass.
-        foreach (var sub in Directory.EnumerateDirectories(dir))
+        foreach (var sub in children)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            // Don't descend into (or remove) a junction/symlink — pruning through one
+            // could delete entries in its target, outside the cache folder.
+            if (IsReparsePoint(sub))
+            {
+                continue;
+            }
+
             removed += PruneEmptyDirectories(sub, isRoot: false, cancellationToken);
         }
 
@@ -148,6 +194,58 @@ public sealed class PhysicalFileCacheStore : ICacheStore, IPrunableCacheStore
         }
 
         return removed;
+    }
+
+    // True when a sibling image file (same base name, any non-".meta" extension) sits
+    // next to this .meta — i.e. the .meta is a normal pair member, not an orphan. Uses
+    // an OS-filtered single-directory glob, so it returns the ~1 match cheaply even in
+    // a populated shard folder.
+    private static bool HasSiblingImage(string metaPath)
+    {
+        var dir = Path.GetDirectoryName(metaPath);
+        if (string.IsNullOrEmpty(dir))
+        {
+            return false;
+        }
+
+        var baseName = Path.GetFileNameWithoutExtension(metaPath);
+        try
+        {
+            foreach (var sibling in Directory.EnumerateFiles(dir, baseName + ".*"))
+            {
+                if (!sibling.EndsWith(MetaExtension, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+        catch (IOException)
+        {
+            // Directory vanished mid-walk — treat as orphan; delete/trim will handle it.
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        return false;
+    }
+
+    private static bool IsReparsePoint(string dir)
+    {
+        try
+        {
+            return (File.GetAttributes(dir) & FileAttributes.ReparsePoint) != 0;
+        }
+        catch (IOException)
+        {
+            // Vanished mid-walk (DirectoryNotFoundException is an IOException) — the
+            // recursion's own guards will handle it; treat as not-a-reparse-point.
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static bool DeleteFile(string path, bool throwOnError)

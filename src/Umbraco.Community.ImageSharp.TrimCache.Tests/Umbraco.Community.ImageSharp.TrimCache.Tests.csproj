@@ -22,9 +22,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Umbraco.Community.ImageSharp.TrimCache.Core\Umbraco.Community.ImageSharp.TrimCache.Core.csproj" />
-    <ProjectReference Include="..\..\src\Umbraco.Community.ImageSharp.TrimCache.Azure\Umbraco.Community.ImageSharp.TrimCache.Azure.csproj" />
-    <ProjectReference Include="..\..\src\Umbraco.Community.ImageSharp.TrimCache.Web\Umbraco.Community.ImageSharp.TrimCache.Web.csproj" />
+    <ProjectReference Include="..\Umbraco.Community.ImageSharp.TrimCache.Core\Umbraco.Community.ImageSharp.TrimCache.Core.csproj" />
+    <ProjectReference Include="..\Umbraco.Community.ImageSharp.TrimCache.Azure\Umbraco.Community.ImageSharp.TrimCache.Azure.csproj" />
+    <ProjectReference Include="..\Umbraco.Community.ImageSharp.TrimCache.Web\Umbraco.Community.ImageSharp.TrimCache.Web.csproj" />
   </ItemGroup>
 
 </Project>

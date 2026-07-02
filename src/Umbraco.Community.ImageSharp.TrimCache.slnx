@@ -12,5 +12,5 @@
   <Project Path="Umbraco.Community.ImageSharp.TrimCache.TestSite.v13/Umbraco.Community.ImageSharp.TrimCache.TestSite.v13.csproj" />
   <Project Path="Umbraco.Community.ImageSharp.TrimCache.TestSite.v17/Umbraco.Community.ImageSharp.TrimCache.TestSite.v17.csproj" />
   <Project Path="Umbraco.Community.ImageSharp.TrimCache.TestSite.v18/Umbraco.Community.ImageSharp.TrimCache.TestSite.v18.csproj" />
-  <Project Path="../tests/Umbraco.Community.ImageSharp.TrimCache.Tests/Umbraco.Community.ImageSharp.TrimCache.Tests.csproj" />
+  <Project Path="Umbraco.Community.ImageSharp.TrimCache.Tests/Umbraco.Community.ImageSharp.TrimCache.Tests.csproj" />
 </Solution>

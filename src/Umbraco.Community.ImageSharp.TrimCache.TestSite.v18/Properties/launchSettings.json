@@ -26,6 +26,24 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
+    },
+    "Umbraco.Web.UI (Azurite)": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchUrl": "umbraco",
+      "launchBrowser": true,
+      "applicationUrl": "https://localhost:44318;http://localhost:55018",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "//": "Routes ImageSharp's image cache to Azurite and points the trimmer at the same container. Requires Azurite running: docker run -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck",
+        "Umbraco__Storage__AzureBlob__Cache__ConnectionString": "UseDevelopmentStorage=true",
+        "Umbraco__Storage__AzureBlob__Cache__ContainerName": "imagesharp-cache-v18",
+        "Umbraco__Storage__AzureBlob__Cache__VirtualPath": "/azure-cache",
+        "ImageCacheTrim__Mode": "Azure",
+        "ImageCacheTrim__ConnectionString": "UseDevelopmentStorage=true",
+        "ImageCacheTrim__ContainerName": "imagesharp-cache-v18",
+        "ImageCacheTrim__Prefix": "cache/"
+      }
     }
   }
 }

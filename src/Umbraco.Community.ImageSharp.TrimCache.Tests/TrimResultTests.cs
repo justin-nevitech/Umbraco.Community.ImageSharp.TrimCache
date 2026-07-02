@@ -25,5 +25,12 @@ public sealed class TrimResultTests
         Assert.Equal(0, TrimResult.Empty.Deleted);
         Assert.Equal(0, TrimResult.Empty.DeletedBytes);
         Assert.Equal(0, TrimResult.Empty.Failed);
+        Assert.Equal(0, TrimResult.Empty.PrunedDirectories);
+    }
+
+    [Fact]
+    public void PrunedDirectories_defaults_to_zero_when_not_specified()
+    {
+        Assert.Equal(0, new TrimResult(1, 1, 100, 0).PrunedDirectories);
     }
 }

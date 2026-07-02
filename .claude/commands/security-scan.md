@@ -26,11 +26,10 @@ actionable by this package — report them but distinguish them from direct-depe
 - No unbounded loops; deletes are idempotent and failure-tolerant.
 
 ### Exception / Information Disclosure
-- Document-parsing/IO exceptions are caught, logged, and not propagated to HTTP responses.
-- The DEBUG-only controller (`#if DEBUG`) must be absent from Release builds — verify it cannot ship to production.
+- IO / storage exceptions are caught, logged, and don't crash the hosted service or leak internals.
 
 ### Input Validation
 - Blob/file names come from storage listings, not user HTTP input — confirm no injection surface.
-- The DEBUG controller's `maxAgeMinutes`/`safetyMinutes` query params are bounded/benign and DEBUG-only.
+- No HTTP endpoints are exposed by the package — the trim runs only as a background hosted service.
 
 Report findings with severity (Critical/High/Medium/Low), file path, line number, and recommended fix.

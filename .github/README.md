@@ -21,7 +21,10 @@ Supports **Umbraco 13, 17 and 18**.
 The cache is disposable derived output. Deleting a variant that is still in use is
 not data loss — it is a cache miss, and the next request regenerates it from the
 original media. So an age-based trim does not need to identify "unused" variants
-precisely. Source media is never touched — only the cache container/folder is scanned.
+precisely. The trimmer only ever scans the cache location you configure — the local
+ImageSharp cache folder, or the Azure cache container/prefix — so keep that separate
+from source media. In Azure mode especially, point it at a cache-only container
+(never the media container); it deletes whatever it's told to scan.
 
 ## Installation
 
@@ -48,10 +51,10 @@ shown here with their defaults):
   "MaxAgeDays": 30,
   "IntervalMinutes": 1440,
   "StartupDelayMinutes": 5,
-  "CacheFolderPath": "umbraco/Data/TEMP/MediaCache",
+  "CacheFolderPath": "",
   "ConnectionString": "",
   "ContainerName": "",
-  "Prefix": "cache/",
+  "Prefix": "",
   "RunOnEveryServer": null
 }
 ```
@@ -60,17 +63,19 @@ shown here with their defaults):
 |---|---|
 | `Enabled` | Master on/off switch. |
 | `Mode` | `Auto` (default), `Local`, or `Azure`. Auto uses Azure when blob storage is configured, otherwise the local physical cache. |
-| `MaxAgeDays` | Entries older than this are deleted (regenerated on next request). |
+| `MaxAgeDays` | Entries older than this are deleted (regenerated on next request). Clamped to 0 or more. |
 | `IntervalMinutes` | How often the trim runs, measured **from startup** (not at wall-clock times). Default 1440 (24h), minimum 1. Read at startup, so changes apply on the next app restart. |
 | `StartupDelayMinutes` | Delay before the first run after app start (default 5). |
-| `CacheFolderPath` | **Local mode only.** Path to the ImageSharp physical cache folder, relative to the content root (or absolute). Default matches Umbraco's default. |
+| `CacheFolderPath` | **Local mode only.** Path to the ImageSharp physical cache folder, relative to the content root (or absolute). Leave empty (the default) to follow Umbraco's configured ImageSharp cache folder (`Umbraco:CMS:Imaging:Cache:CacheFolder`); set it only to trim a different folder. |
 | `ConnectionString` + `ContainerName` | **Azure mode only**, and required for it. In Auto mode, supplying both switches the package to Azure. |
-| `Prefix` | Optional blob-name prefix to scope the Azure scan (e.g. `cache/`). |
+| `Prefix` | **Azure mode only.** Optional blob-name prefix to scope the scan (e.g. `cache/`). Default empty = scan the whole container. |
 | `RunOnEveryServer` | Load-balancing control. **Unset/`null` (default) = auto:** Local mode runs on *every* server (each has its own physical cache); Azure mode runs only on the scheduling/single server (shared cache). Set `true` to force every server, `false` to force only the scheduling/single server. No effect on a single server. |
 
-> `ContainerName` / `Prefix` must match the container ImageSharp's
-> `AzureBlobStorageImageCache` writes to — **never** the source media container.
-> Keep `ConnectionString` out of source control (user secrets / Cloud config).
+> `ContainerName` / `Prefix` must match the container your ImageSharp Azure blob
+> cache writes to — **never** the source media container. With an empty `Prefix`
+> the **entire** container is scanned and trimmed, so point it at a cache-only
+> container (or set a prefix). Keep `ConnectionString` out of source control
+> (user secrets / Cloud config).
 
 ### Operational behaviour
 
@@ -83,8 +88,13 @@ shown here with their defaults):
   scheduling/single server — one pass cleans the cache for everyone. With per-server
   local caches it runs on every server, so each trims its own disk. This is chosen
   automatically from the mode and can be overridden with `RunOnEveryServer`.
+- **Startup notes.** In Azure mode, an empty `Prefix` logs a one-time warning at
+  startup, because the whole container will be scanned and trimmed — a nudge to confirm
+  it's a cache-only container, not one holding media. In local mode, an explicit
+  `CacheFolderPath` override logs the resolved folder that will be trimmed, so a
+  mis-pointed path is visible.
 - **Logging.** Each run writes a single summary line at Information level, e.g.
-  `CacheTrim complete. Examined 1240, deleted 312 entr(y/ies) freeing 458.7 MB, 0 failure(s). Cutoff: older than 30.00:00:00.`
+  `CacheTrim complete. Examined 1240, deleted 312 entr(y/ies) freeing 458.7 MB, pruned 40 empty folder(s), 0 failure(s). Cutoff: older than 30.00:00:00.`
 
 ## Project layout
 
@@ -94,7 +104,7 @@ The solution is split so the trim logic is fully testable without Azure or Umbra
 |---|---|---|
 | `…TrimCache.Core` | logging abstractions only | The trim algorithm, `ICacheStore`, the physical-file store, DTOs and settings. No Azure, no Umbraco. This is what the unit tests exercise. |
 | `…TrimCache.Azure` | `Azure.Storage.Blobs` | `AzureBlobCacheStore` — the only type that touches the Azure SDK. Deliberately thin. |
-| `…TrimCache.Web` | Umbraco CMS | The hosted service, composer, options and a DEBUG-only on-demand controller. Host concerns only; no trim logic. |
+| `…TrimCache.Web` | Umbraco CMS | The hosted service, composer and options. Host concerns only; no trim logic. |
 | `…TrimCache` | the three above | The meta-package consumers install. Bundles the other three assemblies into one NuGet package. |
 | `…TrimCache.Tests` | xUnit, FakeTimeProvider, SkippableFact | Unit tests (in-memory fake + real temp directory) and Azurite integration tests. |
 
@@ -123,14 +133,14 @@ stable, shared CMS APIs, so a single build serves both Umbraco 17 and 18.
 dotnet test
 
 # Include the Azurite integration tests:
-docker run -d -p 10000:10000 mcr.microsoft.com/azure-storage/azurite
+docker run -d -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
 export AZURITE_CONNECTION="UseDevelopmentStorage=true"
 dotnet test
 ```
 
 See [docs/LOCAL-TESTING.md](../docs/LOCAL-TESTING.md) for the full
-cached → trimmed → regenerated loop against a local Umbraco instance, using the
-DEBUG-only on-demand trigger so you don't have to wait for the schedule.
+cached → trimmed → regenerated loop against a local Umbraco instance (and against
+Azurite), driving the scheduled job with a short interval so it happens in minutes.
 
 ## Author
 
@@ -140,3 +150,7 @@ Created and maintained by [Justin Neville](https://www.nevitech.co.uk) at
 ## Contributing
 
 Contributions are most welcome! Please read the [Contributing Guidelines](CONTRIBUTING.md).
+
+## Credits
+
+Icon: [Cleanup icons created by Icon home - Flaticon](https://www.flaticon.com/free-icons/cleanup)

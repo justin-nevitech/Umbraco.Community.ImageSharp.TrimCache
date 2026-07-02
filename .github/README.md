@@ -67,15 +67,49 @@ shown here with their defaults):
 | `IntervalMinutes` | How often the trim runs, measured **from startup** (not at wall-clock times). Default 1440 (24h), minimum 1. Read at startup, so changes apply on the next app restart. |
 | `StartupDelayMinutes` | Delay before the first run after app start (default 5). |
 | `CacheFolderPath` | **Local mode only.** Path to the ImageSharp physical cache folder, relative to the content root (or absolute). Leave empty (the default) to follow Umbraco's configured ImageSharp cache folder (`Umbraco:CMS:Imaging:Cache:CacheFolder`); set it only to trim a different folder. |
-| `ConnectionString` + `ContainerName` | **Azure mode only**, and required for it. In Auto mode, supplying both switches the package to Azure. |
-| `Prefix` | **Azure mode only.** Optional blob-name prefix to scope the scan (e.g. `cache/`). Default empty = scan the whole container. |
+| `ConnectionString` | **Azure mode only** (required for it; supplying it in Auto mode switches to Azure). An account connection string, or one carrying a SAS (`BlobEndpoint=…;SharedAccessSignature=…`) — the SAS form is how Umbraco Cloud exposes storage (see below). The credential must allow **List** and **Delete** on the blobs. |
+| `ContainerName` | **Azure mode only.** The container the ImageSharp cache writes to. |
+| `Prefix` | **Azure mode only.** Blob-name prefix that scopes the scan (e.g. `cache/`). **Set this whenever the cache shares a container with other data (e.g. media)** — everything under the prefix older than the max age is deleted. Leave empty *only* for a dedicated cache-only container. |
 | `RunOnEveryServer` | Load-balancing control. **Unset/`null` (default) = auto:** Local mode runs on *every* server (each has its own physical cache); Azure mode runs only on the scheduling/single server (shared cache). Set `true` to force every server, `false` to force only the scheduling/single server. No effect on a single server. |
 
 > `ContainerName` / `Prefix` must match the container your ImageSharp Azure blob
-> cache writes to — **never** the source media container. With an empty `Prefix`
-> the **entire** container is scanned and trimmed, so point it at a cache-only
-> container (or set a prefix). Keep `ConnectionString` out of source control
-> (user secrets / Cloud config).
+> cache writes to. With an empty `Prefix` the **entire** container is scanned and
+> trimmed, so point it at a cache-only container **or** set a prefix. Keep
+> `ConnectionString` out of source control (user secrets / Cloud config).
+
+### Umbraco Cloud (and other SAS-based storage)
+
+Umbraco Cloud accesses its Azure Blob storage with a **SAS** rather than an account key,
+and the trimmer uses the same kind of connection string. Put the SAS connection string in
+`ConnectionString`, with the container and a prefix:
+
+```json
+"ImageCacheTrim": {
+  "Mode": "Azure",
+  "ConnectionString": "BlobEndpoint=https://<account>.blob.core.windows.net/;SharedAccessSignature=<sas-token>",
+  "ContainerName": "<container>",
+  "Prefix": "cache/"
+}
+```
+
+If what you have is a **SAS URL** — `https://<account>.blob.core.windows.net/<container>?sv=…&sig=…` —
+convert it to that connection string:
+- everything **before** the `?` (minus the container) → `BlobEndpoint` (`https://<account>.blob.core.windows.net/`),
+- everything **after** the `?` → `SharedAccessSignature` (`sv=…&sig=…`),
+- the `<container>` segment → `ContainerName`.
+
+Notes:
+- The SAS must grant **List** and **Delete**. A read-only SAS lets the trim run but every
+  delete fails (logged as failures — nothing is removed).
+- Keep the SAS out of source control (user secrets / Cloud environment config).
+
+> ⚠️ **Set `Prefix`.** On Umbraco Cloud the ImageSharp cache often lives in the **same
+> blob container as your media**. The trimmer deletes every blob under the
+> container + prefix that's older than `MaxAgeDays`, so with an **empty** prefix it would
+> delete your **media** too. Set `Prefix` to the cache's subfolder (e.g. `cache/`) so only
+> cached variants are trimmed — confirm it by listing the container and seeing where the
+> cache blobs actually sit. When Azure mode runs with no prefix, the service also logs a
+> one-time warning at startup for exactly this reason.
 
 ### Operational behaviour
 

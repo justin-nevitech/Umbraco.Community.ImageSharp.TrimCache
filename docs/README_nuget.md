@@ -47,12 +47,19 @@ Add an `ImageCacheTrim` section to `appsettings.json` (defaults shown):
 - `IntervalMinutes` — run frequency, measured from startup. Default 1440 (24h).
 - `CacheFolderPath` — local mode only; leave empty (the default) to follow Umbraco's
   configured ImageSharp cache folder (`Umbraco:CMS:Imaging:Cache:CacheFolder`).
-- `ConnectionString` + `ContainerName` — required for Azure mode; must point at the
-  same container your ImageSharp Azure blob cache writes to (never the source media
-  container). An empty `Prefix` scans the whole container.
+- `ConnectionString` — required for Azure mode. An account connection string, or one
+  carrying a SAS (`BlobEndpoint=…;SharedAccessSignature=…`) — the SAS form is how Umbraco
+  Cloud exposes storage. The credential must allow **List** and **Delete**.
+- `Prefix` — scopes the scan (e.g. `cache/`). **Set it whenever the cache shares a
+  container with other data (e.g. media): with an empty prefix the trimmer would delete
+  the media too.** Leave empty only for a dedicated cache-only container.
 - `RunOnEveryServer` — load-balancing control; defaults to running on every server
   for a local (per-server) cache and only the scheduling server for a shared Azure
   cache.
+
+**Umbraco Cloud:** set `Mode: "Azure"`, put the SAS connection string in `ConnectionString`
+(with `ContainerName`), and set `Prefix` to the cache subfolder (e.g. `cache/`) so media in
+the same container is never trimmed. See the project README for details.
 
 See the [project README](https://github.com/justin-nevitech/Umbraco.Community.ImageSharp.TrimCache)
 for full documentation.

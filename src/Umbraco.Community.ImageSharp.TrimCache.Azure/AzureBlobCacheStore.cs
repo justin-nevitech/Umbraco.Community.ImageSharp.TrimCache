@@ -1,3 +1,4 @@
+using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Umbraco.Community.ImageSharp.TrimCache.Core;
@@ -49,21 +50,37 @@ public sealed class AzureBlobCacheStore : ICacheStore
         [System.Runtime.CompilerServices.EnumeratorCancellation]
         CancellationToken cancellationToken = default)
     {
-        // If the container doesn't exist yet (e.g. ImageSharp hasn't written its
-        // first cached variant), there's nothing to trim. Short-circuit so we return
-        // an empty listing instead of letting GetBlobsAsync throw a 404 that would be
-        // logged as an error on every run until the container is created.
-        var exists = await _container.ExistsAsync(cancellationToken);
-        if (!exists.Value)
-        {
-            yield break;
-        }
+        // Enumerate manually so a missing container (404) can be treated as "nothing
+        // to trim" WITHOUT a separate container-level existence check. That check
+        // (ExistsAsync -> Get Container Properties) needs container read/metadata
+        // permission, which restricted SAS credentials — e.g. Umbraco Cloud media
+        // storage — may not grant, causing a 403. GetBlobsAsync only needs List, which
+        // the trim already requires. GetBlobsAsync pages transparently and includes
+        // LastModified and ContentLength, so no per-blob properties call is needed.
+        await using var enumerator = _container
+            .GetBlobsAsync(prefix: _prefix, cancellationToken: cancellationToken)
+            .GetAsyncEnumerator(cancellationToken);
 
-        // GetBlobsAsync pages transparently and includes LastModified and
-        // ContentLength in the listing, so no per-blob properties call is needed.
-        await foreach (BlobItem blob in _container
-                           .GetBlobsAsync(prefix: _prefix, cancellationToken: cancellationToken))
+        while (true)
         {
+            bool moved;
+            try
+            {
+                moved = await enumerator.MoveNextAsync();
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                // Container doesn't exist yet (e.g. before the first cached variant is
+                // written) — treat as end of listing; nothing to trim.
+                moved = false;
+            }
+
+            if (!moved)
+            {
+                break;
+            }
+
+            var blob = enumerator.Current;
             var lastModified = blob.Properties.LastModified ?? DateTimeOffset.MinValue;
             var size = blob.Properties.ContentLength ?? 0;
             yield return new CacheEntry(blob.Name, lastModified, size);

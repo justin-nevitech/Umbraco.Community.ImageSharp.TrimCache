@@ -18,11 +18,21 @@ var azureCacheConnection = builder.Configuration["Umbraco:Storage:AzureBlob:Cach
 if (!string.IsNullOrWhiteSpace(azureCacheConnection))
 {
     // The named blob file system does NOT auto-create its container (only Umbraco's media
-    // file system does that), so create it up front. Otherwise ImageSharp's cache writes
-    // fail silently and nothing is cached — neither in Azure nor locally, because
-    // AddAzureBlobImageSharpCache replaces the default local physical cache.
+    // file system does that), so create it up front — otherwise ImageSharp's cache writes
+    // fail silently and nothing is cached (AddAzureBlobImageSharpCache replaces the default
+    // local cache). Best-effort: on Azurite this creates it; where creation isn't permitted
+    // (e.g. a restricted Umbraco Cloud credential) or the container already exists, carry on.
     var azureCacheContainer = builder.Configuration["Umbraco:Storage:AzureBlob:Cache:ContainerName"];
-    new BlobContainerClient(azureCacheConnection, azureCacheContainer).CreateIfNotExists();
+    try
+    {
+        new BlobContainerClient(azureCacheConnection, azureCacheContainer).CreateIfNotExists();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine(
+            $"ImageCacheTrim: could not ensure the Azure cache container '{azureCacheContainer}' " +
+            $"exists ({ex.Message}). Continuing — ImageSharp will use it if it already exists.");
+    }
 
     umbraco
         .AddAzureBlobFileSystem("Cache")

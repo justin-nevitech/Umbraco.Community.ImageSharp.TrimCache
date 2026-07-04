@@ -34,6 +34,16 @@ public sealed class ImageCacheTrimOptions
     public string ContainerName { get; set; } = string.Empty;
     public string Prefix { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Safety opt-in for Azure mode. With an empty <see cref="Prefix"/> the trimmer
+    /// would scan and age-trim the ENTIRE container, which is only safe for a
+    /// dedicated cache-only container — never one that also holds media, as Umbraco
+    /// Cloud's shared container does. To avoid deleting media by accident, Azure mode
+    /// with an empty <see cref="Prefix"/> refuses to run unless this is explicitly set
+    /// to <c>true</c> to acknowledge the container holds nothing but the cache.
+    /// </summary>
+    public bool AllowUnprefixedContainer { get; set; }
+
     // --- Local physical cache settings (used when the effective mode is Local) ---
     /// <summary>
     /// Path to the ImageSharp physical cache folder, relative to the content root
@@ -92,6 +102,19 @@ public sealed class ImageCacheTrimOptions
     /// mode requires connection string + container.
     /// </summary>
     public bool CanRun => EffectiveMode == CacheMode.Local || IsAzureConfigured;
+
+    /// <summary>
+    /// Whether Azure mode is scoped safely: either a <see cref="Prefix"/> confines the
+    /// trim to the cache subfolder, or <see cref="AllowUnprefixedContainer"/> explicitly
+    /// acknowledges a dedicated cache-only container. Always true outside Azure mode.
+    /// Guards against the worst footgun — an unprefixed Azure trim silently deleting
+    /// media from a shared container (as on Umbraco Cloud). When this is false the
+    /// hosted service refuses to run and deletes nothing.
+    /// </summary>
+    public bool IsAzurePrefixSafe =>
+        EffectiveMode != CacheMode.Azure ||
+        !string.IsNullOrWhiteSpace(Prefix) ||
+        AllowUnprefixedContainer;
 
     /// <summary>
     /// Whether the trim should run on every server (not only the scheduling/single

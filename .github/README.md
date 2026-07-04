@@ -55,6 +55,7 @@ shown here with their defaults):
   "ConnectionString": "",
   "ContainerName": "",
   "Prefix": "",
+  "AllowUnprefixedContainer": false,
   "RunOnEveryServer": null
 }
 ```
@@ -69,12 +70,14 @@ shown here with their defaults):
 | `CacheFolderPath` | **Local mode only.** Path to the ImageSharp physical cache folder, relative to the content root (or absolute). Leave empty (the default) to follow Umbraco's configured ImageSharp cache folder (`Umbraco:CMS:Imaging:Cache:CacheFolder`); set it only to trim a different folder. |
 | `ConnectionString` | **Azure mode only** (required for it; supplying it in Auto mode switches to Azure). An account connection string, or one carrying a SAS (`BlobEndpoint=…;SharedAccessSignature=…`) — the SAS form is how Umbraco Cloud exposes storage (see below). The credential must allow **List** and **Delete** on the blobs. |
 | `ContainerName` | **Azure mode only.** The container the ImageSharp cache writes to. |
-| `Prefix` | **Azure mode only.** Blob-name prefix that scopes the scan (e.g. `cache/`). **Set this whenever the cache shares a container with other data (e.g. media)** — everything under the prefix older than the max age is deleted. Leave empty *only* for a dedicated cache-only container. |
+| `Prefix` | **Azure mode only.** Blob-name prefix that scopes the scan (e.g. `cache/`). **Set this whenever the cache shares a container with other data (e.g. media)** — everything under the prefix older than the max age is deleted. Leave empty *only* for a dedicated cache-only container (and see `AllowUnprefixedContainer`). |
+| `AllowUnprefixedContainer` | **Azure mode safety gate** (default `false`). With an empty `Prefix` the trimmer would age-delete across the **whole** container, so it **refuses to run** unless you set this to `true` to confirm the container holds nothing but the ImageSharp cache. Leave it `false` (the default) and set `Prefix` whenever media shares the container. |
 | `RunOnEveryServer` | Load-balancing control. **Unset/`null` (default) = auto:** Local mode runs on *every* server (each has its own physical cache); Azure mode runs only on the scheduling/single server (shared cache). Set `true` to force every server, `false` to force only the scheduling/single server. No effect on a single server. |
 
 > `ContainerName` / `Prefix` must match the container your ImageSharp Azure blob
-> cache writes to. With an empty `Prefix` the **entire** container is scanned and
-> trimmed, so point it at a cache-only container **or** set a prefix. Keep
+> cache writes to. With an empty `Prefix` the trimmer would scan the **entire**
+> container, so it **refuses to run** unless you either set a `Prefix` **or** set
+> `AllowUnprefixedContainer: true` for a dedicated cache-only container. Keep
 > `ConnectionString` out of source control (user secrets / Cloud config).
 
 ### Umbraco Cloud (and other SAS-based storage)
@@ -106,10 +109,11 @@ Notes:
 > ⚠️ **Set `Prefix`.** On Umbraco Cloud the ImageSharp cache often lives in the **same
 > blob container as your media**. The trimmer deletes every blob under the
 > container + prefix that's older than `MaxAgeDays`, so with an **empty** prefix it would
-> delete your **media** too. Set `Prefix` to the cache's subfolder (e.g. `cache/`) so only
-> cached variants are trimmed — confirm it by listing the container and seeing where the
-> cache blobs actually sit. When Azure mode runs with no prefix, the service also logs a
-> one-time warning at startup for exactly this reason.
+> delete your **media** too. To prevent that, Azure mode with an empty `Prefix`
+> **refuses to run** — it logs an error at startup and deletes nothing — unless you set
+> `AllowUnprefixedContainer: true` to confirm the container is cache-only. Set `Prefix`
+> to the cache's subfolder (e.g. `cache/`) so only cached variants are trimmed — confirm
+> it by listing the container and seeing where the cache blobs actually sit.
 
 ### Operational behaviour
 
@@ -122,11 +126,12 @@ Notes:
   scheduling/single server — one pass cleans the cache for everyone. With per-server
   local caches it runs on every server, so each trims its own disk. This is chosen
   automatically from the mode and can be overridden with `RunOnEveryServer`.
-- **Startup notes.** In Azure mode, an empty `Prefix` logs a one-time warning at
-  startup, because the whole container will be scanned and trimmed — a nudge to confirm
-  it's a cache-only container, not one holding media. In local mode, an explicit
-  `CacheFolderPath` override logs the resolved folder that will be trimmed, so a
-  mis-pointed path is visible.
+- **Startup notes.** In Azure mode, an empty `Prefix` with no `AllowUnprefixedContainer`
+  opt-in makes the service **refuse to run**: it logs an error at startup and deletes
+  nothing, because trimming the whole container could delete media. Setting
+  `AllowUnprefixedContainer: true` allows it but logs a warning that the whole container
+  will be trimmed. In local mode, an explicit `CacheFolderPath` override logs the resolved
+  folder that will be trimmed, so a mis-pointed path is visible.
 - **Logging.** Each run writes a single summary line at Information level, e.g.
   `CacheTrim complete. Examined 1240, deleted 312 entr(y/ies) freeing 458.7 MB, pruned 40 empty folder(s), 0 failure(s). Cutoff: older than 30.00:00:00.`
 

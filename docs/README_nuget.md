@@ -38,7 +38,8 @@ Add an `ImageCacheTrim` section to `appsettings.json` (defaults shown):
   "CacheFolderPath": "",
   "ConnectionString": "",
   "ContainerName": "",
-  "Prefix": ""
+  "Prefix": "",
+  "AllowUnprefixedContainer": false
 }
 ```
 
@@ -52,7 +53,10 @@ Add an `ImageCacheTrim` section to `appsettings.json` (defaults shown):
   Cloud exposes storage. The credential must allow **List** and **Delete**.
 - `Prefix` — scopes the scan (e.g. `cache/`). **Set it whenever the cache shares a
   container with other data (e.g. media): with an empty prefix the trimmer would delete
-  the media too.** Leave empty only for a dedicated cache-only container.
+  the media too.** To prevent that, an empty prefix makes Azure mode **refuse to run**
+  (it logs an error and deletes nothing) unless you opt in with `AllowUnprefixedContainer`.
+- `AllowUnprefixedContainer` — safety opt-in (default `false`). Set `true` only for a
+  dedicated cache-only container to allow trimming it whole with no prefix.
 - `RunOnEveryServer` — load-balancing control; defaults to running on every server
   for a local (per-server) cache and only the scheduling server for a shared Azure
   cache.

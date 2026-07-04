@@ -63,18 +63,33 @@ public sealed class ImageCacheTrimHostedService : RecurringHostedServiceBase, ID
         _hostEnvironment = hostEnvironment;
         _imagingSettings = imagingSettings.Value;
 
-        // Azure mode with no prefix scans (and trims) the WHOLE container. That's fine
-        // for a dedicated cache container, but dangerous if it also holds media, so
-        // surface it once at startup.
+        // Azure mode with no prefix scans (and trims) the WHOLE container by age. Safe
+        // for a dedicated cache container, but catastrophic if it also holds media (as
+        // Umbraco Cloud's shared container does). Refuse to run unless the operator has
+        // explicitly acknowledged a cache-only container via AllowUnprefixedContainer.
         if (_options.EffectiveMode == CacheMode.Azure
             && string.IsNullOrWhiteSpace(_options.Prefix))
         {
-            _logger.LogWarning(
-                "ImageCacheTrim: Azure mode is configured with no Prefix, so the ENTIRE " +
-                "container '{Container}' will be scanned and trimmed by age. Ensure it " +
-                "holds only the ImageSharp cache — never source media — or set a Prefix " +
-                "(e.g. 'cache/') to scope the scan.",
-                _options.ContainerName);
+            if (_options.AllowUnprefixedContainer)
+            {
+                _logger.LogWarning(
+                    "ImageCacheTrim: Azure mode is running with no Prefix and " +
+                    "AllowUnprefixedContainer=true, so the ENTIRE container '{Container}' " +
+                    "will be scanned and trimmed by age. This is only safe if that " +
+                    "container holds the ImageSharp cache and never source media.",
+                    _options.ContainerName);
+            }
+            else
+            {
+                _logger.LogError(
+                    "ImageCacheTrim: REFUSING TO RUN — no files will be deleted. Azure mode " +
+                    "is configured with no Prefix, so the trimmer would age-delete files " +
+                    "across the ENTIRE container '{Container}', including media if it shares " +
+                    "the container (as on Umbraco Cloud). Set 'Prefix' to the cache subfolder " +
+                    "(e.g. 'cache/') to scope the trim, or set 'AllowUnprefixedContainer' to " +
+                    "true only if the container holds nothing but the ImageSharp cache.",
+                    _options.ContainerName);
+            }
         }
         // Local mode with an explicit CacheFolderPath override: record which custom
         // folder will be trimmed, so a mis-pointed path is visible. The default (empty)
@@ -126,6 +141,17 @@ public sealed class ImageCacheTrimHostedService : RecurringHostedServiceBase, ID
             _logger.LogWarning(
                 "ImageCacheTrim skipped: Azure mode selected but ConnectionString/" +
                 "ContainerName not configured.");
+            return;
+        }
+
+        // Hard safety gate: never trim an unprefixed Azure container unless it has been
+        // explicitly acknowledged as cache-only. Prevents deleting media from a shared
+        // container by accident. The startup error explains how to resolve it.
+        if (!_options.IsAzurePrefixSafe)
+        {
+            _logger.LogDebug(
+                "ImageCacheTrim skipped: Azure mode with no Prefix and no " +
+                "AllowUnprefixedContainer opt-in. See the startup error for details.");
             return;
         }
 

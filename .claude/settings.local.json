@@ -25,7 +25,13 @@
       "Bash(python3 - 'C:\\\\Users\\\\JustinNeville/.nuget/packages/umbraco.storageproviders.azureblob.imagesharp/17.0.0/lib/net10.0/Umbraco.StorageProviders.AzureBlob.ImageSharp.dll')",
       "PowerShell($dll = \"$HOME\\\\.nuget\\\\packages\\\\umbraco.storageproviders.azureblob.imagesharp\\\\17.0.0\\\\lib\\\\net10.0\\\\Umbraco.StorageProviders.AzureBlob.ImageSharp.dll\"; $bytes = [System.IO.File]::ReadAllBytes\\($dll\\); $u16 = [System.Text.Encoding]::Unicode.GetString\\($bytes\\); [regex]::Matches\\($u16, '/?[A-Za-z][A-Za-z0-9_/.\\\\-]{2,40}'\\) | ForEach-Object { $_.Value } | Where-Object { $_ -match 'cache' } | Sort-Object -Unique)",
       "Read(//d/My Documents/projects/Open Source/**)",
-      "Bash(rm -rf \"Umbraco.Community.ImageSharp.TrimCache.TestSite.v17\")"
+      "Bash(rm -rf \"Umbraco.Community.ImageSharp.TrimCache.TestSite.v17\")",
+      "WebFetch(domain:docs.umbraco.com)",
+      "WebFetch(domain:docs.sixlabors.com)",
+      "WebFetch(domain:www.nevitech.co.uk)",
+      "Bash(grep -vE \"^\\\\s*$\")",
+      "Bash(unzip -l artifacts/nupkg-check/Umbraco.Community.ImageSharp.TrimCache.1.0.0.nupkg)",
+      "Bash(unzip -p artifacts/nupkg-check/Umbraco.Community.ImageSharp.TrimCache.1.0.0.nupkg Umbraco.Community.ImageSharp.TrimCache.nuspec)"
     ]
   }
 }

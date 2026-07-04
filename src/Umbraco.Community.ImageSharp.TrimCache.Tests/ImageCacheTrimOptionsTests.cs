@@ -36,6 +36,59 @@ public sealed class ImageCacheTrimOptionsTests
         Assert.Equal(5, options.StartupDelayMinutes);
         // Empty by default: the folder is resolved from Umbraco's imaging settings.
         Assert.Equal(string.Empty, options.CacheFolderPath);
+        // Off by default: an unprefixed Azure container must be opted into explicitly.
+        Assert.False(options.AllowUnprefixedContainer);
+    }
+
+    [Fact]
+    public void IsAzurePrefixSafe_is_true_for_local_mode_regardless_of_prefix()
+    {
+        // Prefix only matters for Azure; local mode is always prefix-safe.
+        Assert.True(new ImageCacheTrimOptions { Mode = CacheMode.Local }.IsAzurePrefixSafe);
+        Assert.True(new ImageCacheTrimOptions().IsAzurePrefixSafe); // Auto -> Local
+    }
+
+    [Fact]
+    public void IsAzurePrefixSafe_is_true_for_azure_with_a_prefix()
+    {
+        var options = WithAzure();
+        options.Mode = CacheMode.Azure;
+        options.Prefix = "cache/";
+        Assert.True(options.IsAzurePrefixSafe);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void IsAzurePrefixSafe_is_false_for_azure_without_a_prefix_or_opt_in(string? prefix)
+    {
+        var options = WithAzure();
+        options.Mode = CacheMode.Azure;
+        options.Prefix = prefix!;
+        Assert.False(options.IsAzurePrefixSafe);
+    }
+
+    [Fact]
+    public void IsAzurePrefixSafe_is_true_for_azure_without_a_prefix_when_opted_in()
+    {
+        // A dedicated cache-only container may be trimmed whole once acknowledged.
+        var options = WithAzure();
+        options.Mode = CacheMode.Azure;
+        options.AllowUnprefixedContainer = true;
+        Assert.True(options.IsAzurePrefixSafe);
+    }
+
+    [Fact]
+    public void IsAzurePrefixSafe_follows_auto_resolution_to_azure()
+    {
+        // Auto mode that resolves to Azure (blob configured) is subject to the guard.
+        var options = WithAzure(); // Auto by default -> resolves to Azure
+        Assert.Equal(CacheMode.Azure, options.EffectiveMode);
+        Assert.False(options.IsAzurePrefixSafe);
+
+        options.Prefix = "cache/";
+        Assert.True(options.IsAzurePrefixSafe);
     }
 
     [Fact]
